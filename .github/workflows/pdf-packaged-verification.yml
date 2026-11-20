@@ -1,0 +1,46 @@
+name: PDF Packaged Verification
+
+on:
+  push:
+    branches: [ci/pdf-packaged-verification]
+
+permissions:
+  contents: read
+
+jobs:
+  packaged-pdf:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/ci/npm-ci.mjs
+      - name: Install Playwright Chromium
+        run: ./node_modules/.bin/playwright install chromium --only-shell
+      - name: Build the ARM64 candidate
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -euo pipefail
+          test "$(node -p process.arch)" = arm64
+          node scripts/fetch-micromamba.mjs osx-arm64 resources/bin/mac/arm64/micromamba
+          npm run build:unpack -- --mac --arm64 --publish never -c.electronDist=node_modules/electron/dist
+      - name: Verify PDF.js resources and exercise the packaged UI
+        run: |
+          set -euo pipefail
+          export OPEN_SCIENCE_E2E_EXECUTABLE="$PWD/dist/mac-arm64/Open-Science.app/Contents/MacOS/Open-Science"
+          build="$(dirname "$OPEN_SCIENCE_E2E_EXECUTABLE")/../Resources/backend/node_modules/pdfjs-dist/legacy/build"
+          test -f "$build/pdf.mjs"
+          test -f "$build/pdf.worker.mjs"
+          test ! -e "$build/pdf.min.mjs"
+          test ! -e "$build/pdf.worker.min.mjs"
+          bash scripts/ci/run-macos-packaged-e2e.sh npm run test:e2e -- \
+            e2e/pdf-annotations.spec.ts e2e/pdf-translation-pair.spec.ts \
+            -g 'imports external notes|host-located Reading highlights|handles standard PDF generation' \
+            --workers=1 --retries=0
