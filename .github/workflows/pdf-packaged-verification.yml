@@ -26,11 +26,13 @@ jobs:
       - name: Build the ARM64 candidate
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          NODE_OPTIONS: --max-old-space-size=8192
         run: |
           set -euo pipefail
           test "$(node -p process.arch)" = arm64
           node scripts/fetch-micromamba.mjs osx-arm64 resources/bin/mac/arm64/micromamba
-          npm run build:unpack -- --mac --arm64 --publish never -c.electronDist=node_modules/electron/dist
+          npm run build:e2e
+          ./node_modules/.bin/electron-builder --dir --mac --arm64 --publish never -c.electronDist=node_modules/electron/dist
       - name: Verify PDF.js resources and exercise the packaged UI
         run: |
           set -euo pipefail
